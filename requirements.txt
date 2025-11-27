@@ -3,3 +3,6 @@ python-dotenv
 sqlalchemy
 pytz
 python-dateutil
+streamlit-extras
+streamlit-lottie
+pandas
