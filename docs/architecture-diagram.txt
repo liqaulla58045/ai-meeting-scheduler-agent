@@ -14,7 +14,8 @@
 +---------------------------+
 |    AI/NLP Layer           |
 |   (agent/nlp.py)          |
-| - Sends text to OpenAI    |
+| - Sends text to           |
+|   offline NLP parser      |
 | - Receives structured     |
 |   JSON: title, time, etc  |
 +-------------+-------------+
