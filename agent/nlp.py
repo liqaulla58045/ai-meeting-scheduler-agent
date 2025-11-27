@@ -82,11 +82,26 @@ def parse_meeting_request(user_input: str):
         # Fallback: small cleaned version of original text as title
         title = text[:60] + ("..." if len(text) > 60 else "")
 
+    # Recurrence
+    recurrence_type = "none"
+    recurrence_until = None
+    if "every day" in lower:
+        recurrence_type = "daily"
+        recurrence_until = start_time + timedelta(days=365)  # default 1 year
+    elif "every week" in lower:
+        recurrence_type = "weekly"
+        recurrence_until = start_time + timedelta(weeks=52)
+    elif "every month" in lower:
+        recurrence_type = "monthly"
+        recurrence_until = start_time + timedelta(days=365)
+
     end_time = start_time + timedelta(minutes=duration_minutes)
 
     return {
         "title": title,
         "start_time": start_time,
         "end_time": end_time,
-        "participants": participants
+        "participants": participants,
+        "recurrence_type": recurrence_type,
+        "recurrence_until": recurrence_until
     }
