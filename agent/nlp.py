@@ -1,67 +1,92 @@
-import os
 from datetime import datetime, timedelta
 from dateutil import parser as date_parser
 import pytz
-from openai import OpenAI
-import json
-
-# Load API key from environment variable OPENAI_API_KEY
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+import re
 
 IST = pytz.timezone("Asia/Kolkata")
 
 def parse_meeting_request(user_input: str):
     """
-    Uses OpenAI to extract:
-    - title
-    - date / time
-    - duration (minutes)
-    - participants (emails/names)
+    Offline/local parser for meeting extraction without external APIs.
+
+    Extracts best-effort:
+    - title (after word 'about', else 'Meeting')
+    - start_time (understands 'today', 'tomorrow', times like '4 pm', '11:30 am')
+    - duration_minutes (e.g. '30 minutes', '1 hour')
+    - participants (after word 'with')
     """
 
-    prompt = f"""
-You are an assistant that extracts structured meeting details from user text.
-Return ONLY a JSON object with the following keys:
-- title (string)
-- start (ISO datetime, no timezone, e.g. "2025-11-20 15:00")
-- duration_minutes (integer)
-- participants (comma-separated string of names or emails)
+    text = user_input.strip()
+    lower = text.lower()
 
-If any field is missing, make a reasonable assumption.
+    # Defaults
+    now = datetime.now(IST)
+    start_time = now + timedelta(hours=1)
+    duration_minutes = 30
+    title = "Meeting"
+    participants = ""
 
-User request: "{user_input}"
-"""
+    # Duration: "30 minutes", "1 hour", "2 hrs"
+    dur = re.search(r"(\d+)\s*(minute|min|hour|hr|hours|hrs)", lower)
+    if dur:
+        num = int(dur.group(1))
+        unit = dur.group(2)
+        if "hour" in unit or "hr" in unit:
+            duration_minutes = num * 60
+        else:
+            duration_minutes = num
 
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=prompt
-    )
+    # Date keywords
+    if "tomorrow" in lower:
+        base_date = now + timedelta(days=1)
+    else:
+        base_date = now
 
-    # Get the model's text output
-    raw_output = response.output[0].content[0].text
+    if "today" in lower:
+        base_date = now
 
-    try:
-        data = json.loads(raw_output)
-    except Exception:
-        # Fallback simple parsing if JSON fails
-        data = {
-            "title": "Meeting",
-            "start": (datetime.now(IST) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M"),
-            "duration_minutes": 30,
-            "participants": ""
-        }
+    # Time: "4 pm", "11:30 am", "16:00"
+    time_match = re.search(r"(\d{1,2}(:\d{2})?\s*(am|pm))", lower)
+    parsed_time = None
+    if time_match:
+        try:
+            parsed_time = date_parser.parse(time_match.group(1))
+        except Exception:
+            parsed_time = None
 
-    # Normalize
-    start_dt = date_parser.parse(data.get("start"))
-    if start_dt.tzinfo is None:
-        start_dt = IST.localize(start_dt)
+    if parsed_time:
+        start_time = base_date.replace(
+            hour=parsed_time.hour,
+            minute=parsed_time.minute,
+            second=0,
+            microsecond=0
+        )
+    else:
+        # If no explicit time, set to next full hour
+        start_time = base_date.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
 
-    duration = int(data.get("duration_minutes", 30))
-    end_dt = start_dt + timedelta(minutes=duration)
+    # Participants: after word "with"
+    with_idx = lower.find("with")
+    if with_idx != -1:
+        participants = text[with_idx + len("with"):].strip()
+        # Stop at "about" if present after "with"
+        about_idx = participants.lower().find("about")
+        if about_idx != -1:
+            participants = participants[:about_idx].strip()
+
+    # Title/topic: after word "about"
+    about_idx_full = lower.find("about")
+    if about_idx_full != -1:
+        title = text[about_idx_full + len("about"):].strip().capitalize() or "Meeting"
+    else:
+        # Fallback: small cleaned version of original text as title
+        title = text[:60] + ("..." if len(text) > 60 else "")
+
+    end_time = start_time + timedelta(minutes=duration_minutes)
 
     return {
-        "title": data.get("title", "Meeting"),
-        "start_time": start_dt,
-        "end_time": end_dt,
-        "participants": data.get("participants", "")
+        "title": title,
+        "start_time": start_time,
+        "end_time": end_time,
+        "participants": participants
     }
