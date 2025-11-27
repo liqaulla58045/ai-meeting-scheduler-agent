@@ -14,6 +14,8 @@ class Meeting(Base):
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)
     source = Column(String, default="local")  # local / google_calendar
+    recurrence_type = Column(String, default="none")  # none, daily, weekly, monthly
+    recurrence_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 DB_PATH = os.path.join("data", "meetings.db")
