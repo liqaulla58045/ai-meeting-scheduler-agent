@@ -10,7 +10,8 @@ from agent.db import init_db
 from agent.nlp import parse_meeting_request
 from agent.scheduler import create_meeting, get_all_meetings, edit_meeting, delete_meeting
 from agent.calendar_integration import create_google_calendar_event
-from calendar_view import show_calendar_view
+from agent.calendar_view import show_calendar_view
+
 
 # Lottie animation JSON (futuristic loading animation)
 lottie_animation = {
