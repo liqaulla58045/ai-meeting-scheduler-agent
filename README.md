@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 📅 AI Meeting Scheduler Agent
 
 An AI-powered Meeting Scheduler that understands natural language requests
@@ -166,3 +167,6 @@ Open the URL shown in the terminal (usually `http://localhost:8501`).
 5. **Closing (10–20 sec)**  
    - Mention extensibility: Google Calendar, email, multi-user, etc.  
    - Say you’d love to continue this in the internship.
+=======
+# ai-meeting-scheduler-agent
+>>>>>>> e207ea40e83945ceae334f0bf23c76e190f308df
