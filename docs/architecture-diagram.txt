@@ -1,0 +1,45 @@
++---------------------------+
+|        User (Browser)     |
+|  - Types natural request  |
+|  - Confirms meeting       |
++-------------+-------------+
+              |
+              v
++---------------------------+
+|     Streamlit Frontend    |
+|  (app.py UI components)   |
++-------------+-------------+
+              |
+              v
++---------------------------+
+|    AI/NLP Layer           |
+|   (agent/nlp.py)          |
+| - Sends text to OpenAI    |
+| - Receives structured     |
+|   JSON: title, time, etc  |
++-------------+-------------+
+              |
+              v
++---------------------------+
+|  Scheduler Logic          |
+|  (agent/scheduler.py)     |
+| - Checks conflicts        |
+| - Creates meeting records |
++-------------+-------------+
+              |
+              v
++---------------------------+
+|   Storage Layer           |
+|   (agent/db.py + SQLite)  |
+| - Stores all meetings     |
+| - Query for listing       |
++-------------+-------------+
+              |
+          (optional)
+              v
++---------------------------+
+|  External Calendar        |
+| (agent/calendar_integr.)  |
+| - Stub for Google         |
+|   Calendar API            |
++---------------------------+
