@@ -1,6 +1,7 @@
 from datetime import datetime
 from .db import get_session, Meeting
 
+
 def is_conflict(start_time, end_time, session=None, ignore_meeting_id=None):
     """
     Check if the given time range conflicts with any existing meeting.
@@ -66,9 +67,7 @@ def edit_meeting(meeting_id, title=None, participants=None, start_time=None, end
     """
     Edit an existing meeting.
 
-    - meeting_id: which meeting to update
-    - other fields: only updated if not None
-
+    Only fields that are not None will be updated.
     Also checks for time conflicts (ignoring this same meeting).
     """
     session = get_session()
@@ -78,11 +77,11 @@ def edit_meeting(meeting_id, title=None, participants=None, start_time=None, end
         session.close()
         return None, f"Meeting with id {meeting_id} not found."
 
-    # If times are being changed, check for conflicts
+    # Decide new time range
     new_start = start_time if start_time is not None else meeting.start_time
     new_end = end_time if end_time is not None else meeting.end_time
 
-    conflict, conflicts = is_conflict(
+    conflict, _ = is_conflict(
         new_start,
         new_end,
         session=session,
@@ -93,7 +92,6 @@ def edit_meeting(meeting_id, title=None, participants=None, start_time=None, end
         session.close()
         return None, "Updated time slot conflicts with another meeting."
 
-    # Apply updates
     if title is not None:
         meeting.title = title
     if participants is not None:
@@ -108,3 +106,21 @@ def edit_meeting(meeting_id, title=None, participants=None, start_time=None, end
     session.close()
 
     return meeting, None
+
+
+def delete_meeting(meeting_id):
+    """
+    Delete an existing meeting by id.
+    """
+    session = get_session()
+    meeting = session.get(Meeting, meeting_id)
+
+    if meeting is None:
+        session.close()
+        return False, f"Meeting with id {meeting_id} not found."
+
+    session.delete(meeting)
+    session.commit()
+    session.close()
+
+    return True, None
