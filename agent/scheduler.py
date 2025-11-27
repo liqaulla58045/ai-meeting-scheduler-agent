@@ -1,126 +1,117 @@
-from datetime import datetime
-from .db import get_session, Meeting
+from agent.db import get_session, Meeting
+from datetime import datetime, timedelta
+from typing import Optional, Tuple
 
-
-def is_conflict(start_time, end_time, session=None, ignore_meeting_id=None):
-    """
-    Check if the given time range conflicts with any existing meeting.
-    Optionally ignore one meeting (for edits).
-    """
-    close_session = False
-    if session is None:
-        session = get_session()
-        close_session = True
-
-    query = session.query(Meeting).filter(
-        Meeting.start_time < end_time,
-        Meeting.end_time > start_time,
-    )
-
-    if ignore_meeting_id is not None:
-        query = query.filter(Meeting.id != ignore_meeting_id)
-
-    conflicts = query.all()
-
-    if close_session:
-        session.close()
-
-    return len(conflicts) > 0, conflicts
-
-
-def create_meeting(title, participants, start_time, end_time, source="local"):
-    """
-    Create a new meeting if there is no conflict.
-    """
+def check_conflict(start_time: datetime, end_time: datetime) -> bool:
     session = get_session()
-    conflict, _ = is_conflict(start_time, end_time, session=session)
-
-    if conflict:
+    try:
+        conflicts = session.query(Meeting).filter(
+            Meeting.start_time < end_time,
+            Meeting.end_time > start_time
+        ).all()
+        return len(conflicts) > 0
+    finally:
         session.close()
-        return None, "Time slot conflicts with an existing meeting."
 
-    meeting = Meeting(
-        title=title,
-        participants=participants,
-        start_time=start_time,
-        end_time=end_time,
-        source=source
-    )
-    session.add(meeting)
-    session.commit()
-    session.refresh(meeting)
-    session.close()
-    return meeting, None
-
+def create_meeting(title: str, participants: Optional[str], start_time: datetime, end_time: datetime, source: str = "local", recurrence_type: str = "none", recurrence_until: Optional[datetime] = None) -> Tuple[Optional[Meeting], Optional[str]]:
+    if recurrence_type == "none":
+        if check_conflict(start_time, end_time):
+            return None, "Conflict detected with existing meeting."
+        meeting = Meeting(
+            title=title,
+            participants=participants,
+            start_time=start_time,
+            end_time=end_time,
+            source=source,
+            recurrence_type=recurrence_type,
+            recurrence_until=recurrence_until
+        )
+        session = get_session()
+        try:
+            session.add(meeting)
+            session.commit()
+            return meeting, None
+        except Exception as e:
+            session.rollback()
+            return None, str(e)
+        finally:
+            session.close()
+    else:
+        # Handle recurring meetings
+        meetings = []
+        current_start = start_time
+        current_end = end_time
+        while current_start <= recurrence_until:
+            if check_conflict(current_start, current_end):
+                return None, f"Conflict detected for recurring instance on {current_start.strftime('%Y-%m-%d %H:%M')}."
+            meetings.append(Meeting(
+                title=title,
+                participants=participants,
+                start_time=current_start,
+                end_time=current_end,
+                source=source,
+                recurrence_type=recurrence_type,
+                recurrence_until=recurrence_until
+            ))
+            if recurrence_type == "daily":
+                current_start += timedelta(days=1)
+                current_end += timedelta(days=1)
+            elif recurrence_type == "weekly":
+                current_start += timedelta(weeks=1)
+                current_end += timedelta(weeks=1)
+            elif recurrence_type == "monthly":
+                # Approximate monthly as 30 days
+                current_start += timedelta(days=30)
+                current_end += timedelta(days=30)
+            else:
+                break
+        session = get_session()
+        try:
+            for m in meetings:
+                session.add(m)
+            session.commit()
+            return meetings[0], None  # Return first meeting as representative
+        except Exception as e:
+            session.rollback()
+            return None, str(e)
+        finally:
+            session.close()
 
 def get_all_meetings():
-    """
-    Return all meetings ordered by start time.
-    """
     session = get_session()
-    meetings = session.query(Meeting).order_by(Meeting.start_time.asc()).all()
-    session.close()
-    return meetings
+    try:
+        return session.query(Meeting).order_by(Meeting.start_time).all()
+    finally:
+        session.close()
 
-
-def edit_meeting(meeting_id, title=None, participants=None, start_time=None, end_time=None, source=None):
-    """
-    Edit an existing meeting.
-
-    Only fields that are not None will be updated.
-    Also checks for time conflicts (ignoring this same meeting).
-    """
+def edit_meeting(meeting_id: int, **updates) -> Tuple[bool, Optional[str]]:
     session = get_session()
-    meeting = session.get(Meeting, meeting_id)
-
-    if meeting is None:
+    try:
+        meeting = session.query(Meeting).filter(Meeting.id == meeting_id).first()
+        if not meeting:
+            return False, "Meeting not found."
+        for key, value in updates.items():
+            if hasattr(meeting, key):
+                setattr(meeting, key, value)
+        session.commit()
+        return True, None
+    except Exception as e:
+        session.rollback()
+        return False, str(e)
+    finally:
         session.close()
-        return None, f"Meeting with id {meeting_id} not found."
 
-    # Decide new time range
-    new_start = start_time if start_time is not None else meeting.start_time
-    new_end = end_time if end_time is not None else meeting.end_time
-
-    conflict, _ = is_conflict(
-        new_start,
-        new_end,
-        session=session,
-        ignore_meeting_id=meeting_id
-    )
-
-    if conflict:
-        session.close()
-        return None, "Updated time slot conflicts with another meeting."
-
-    if title is not None:
-        meeting.title = title
-    if participants is not None:
-        meeting.participants = participants
-    meeting.start_time = new_start
-    meeting.end_time = new_end
-    if source is not None:
-        meeting.source = source
-
-    session.commit()
-    session.refresh(meeting)
-    session.close()
-
-    return meeting, None
-
-
-def delete_meeting(meeting_id):
-    """
-    Delete an existing meeting by id.
-    """
+def delete_meeting(meeting_id: int) -> Tuple[bool, Optional[str]]:
     session = get_session()
-    meeting = session.get(Meeting, meeting_id)
-
-    if meeting is None:
+    try:
+        meeting = session.query(Meeting).filter(Meeting.id == meeting_id).first()
+        if not meeting:
+            return False, "Meeting not found."
+        session.delete(meeting)
+        session.commit()
+        return True, None
+    except Exception as e:
+        session.rollback()
+        return False, str(e)
+    finally:
         session.close()
-        return False, f"Meeting with id {meeting_id} not found."
-
-    session.delete(meeting)
-    session.commit()
-    session.close()
-
-    return True, None
